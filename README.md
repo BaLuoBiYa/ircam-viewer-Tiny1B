@@ -221,3 +221,83 @@ formerly overloaded Pi Zero W is now 50% idle.
 I additionally implemented a 256KB lookup table of all 65536 necessary 32-bit
 multiplicative inverses, but it showed no measurable advantage on the Pi in
 testing, so I removed it.
+
+## Tiny1B UVC shutter controls (local patch)
+
+This tree also has direct Tiny1B vendor-control support, without `libiruvc`.
+The commands use the camera's endpoint-0 vendor mailbox and require access to
+`/dev/bus/usb` (run as root, or install a udev rule for `0bda:3901`).
+
+```sh
+# Read the current auto-shutter flag
+./ircam -d /dev/video4 --shutter-auto-get
+
+# Auto shutter on, 60..120 second interval
+./ircam -d /dev/video4 \
+    --shutter-auto 1 \
+    --shutter-min 60 \
+    --shutter-max 120
+
+# Disable auto shutter and trigger one manual calibration
+./ircam -d /dev/video4 \
+    --shutter-auto 0 \
+    --shutter-manual
+```
+
+Options:
+
+* `--shutter-auto 0|1` - firmware auto-shutter enable
+* `--shutter-min N` - minimum interval, 0..255
+* `--shutter-max N` - maximum interval, 0..255
+* `--shutter-vtemp-thd N` - sensor-temperature threshold, 0..255
+* `--shutter-manual` - trigger one manual shutter
+* `--shutter-auto-get` - print the current auto-shutter flag
+
+The interval unit is the firmware's byte-valued interval parameter; 60/120 is
+a good starting point for a quieter camera. Setting `--shutter-auto 0` without
+periodic manual triggers can cause slow thermal drift.
+
+### Persisting shutter settings
+
+Shutter settings can be stored in a small config file and loaded automatically
+on the next start. The default path is:
+
+```text
+$XDG_CONFIG_HOME/ircam-viewer.conf
+```
+
+or, when `XDG_CONFIG_HOME` is unset:
+
+```text
+$HOME/.config/ircam-viewer.conf
+```
+
+Save the current values:
+
+```sh
+./ircam -d /dev/video4 \
+    --shutter-auto 1 \
+    --shutter-min 60 \
+    --shutter-max 120 \
+    --shutter-save
+```
+
+Later runs can omit the shutter flags:
+
+```sh
+./ircam -d /dev/video4
+```
+
+The file is a simple `key=value` list:
+
+```text
+shutter_auto=1
+shutter_min=60
+shutter_max=120
+```
+
+Use `--shutter-config PATH` to override the file, `--shutter-no-config` to
+ignore it for one run, and `--shutter-save` to write the effective values.
+Command-line values take precedence over the file.
+
+The interval unit is the firmware's byte-valued interval parameter; 60/120 is a good starting point. If you experiment with larger values, use a known-good USB cable and test a cold restart before relying on them.

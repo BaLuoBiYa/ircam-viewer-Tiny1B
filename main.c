@@ -41,6 +41,7 @@
 #include "v4l2.h"
 #include "lavc.h"
 #include "sdl.h"
+#include "uvc.h"
 #include "inet.h"
 
 static bool record_only;
@@ -52,6 +53,16 @@ static bool listen_only;
 static FILE *remote_socket;
 static bool hide_init_help;
 static bool fullscreen;
+static int rotation;
+static int shutter_auto = -1;
+static int shutter_min = -1;
+static int shutter_max = -1;
+static int shutter_vtemp_thd = -1;
+static bool shutter_manual;
+static bool shutter_get_auto;
+static const char *shutter_config_path;
+static bool shutter_no_config;
+static bool shutter_save;
 
 static sig_atomic_t stop;
 
@@ -150,6 +161,40 @@ found:
 	}
 
 	v4l2_init_stream(dev);
+
+	if (shutter_auto >= 0 || shutter_min >= 0 || shutter_max >= 0 ||
+	    shutter_vtemp_thd >= 0 || shutter_manual || shutter_get_auto) {
+		int ufd = uvc_open_for_video(devpath);
+
+		if (ufd < 0)
+			err(1, "can't open USB control for '%s'", devpath);
+
+		if (shutter_auto >= 0 &&
+		    uvc_shutter_set_auto(ufd, shutter_auto))
+			err(1, "shutter-auto failed");
+		if (shutter_min >= 0 &&
+		    uvc_shutter_set_min_interval(ufd, shutter_min))
+			err(1, "shutter-min failed");
+		if (shutter_max >= 0 &&
+		    uvc_shutter_set_max_interval(ufd, shutter_max))
+			err(1, "shutter-max failed");
+		if (shutter_vtemp_thd >= 0 &&
+		    uvc_shutter_set_vtemp_thd(ufd, shutter_vtemp_thd))
+			err(1, "shutter-vtemp-thd failed");
+		if (shutter_get_auto) {
+			int value = uvc_shutter_get_auto(ufd);
+
+			if (value < 0)
+				err(1, "shutter-auto-get failed");
+			printf("shutter auto: %d\n", value);
+		}
+		if (shutter_manual && uvc_shutter_manual(ufd))
+			err(1, "shutter-manual failed");
+
+		close(ufd);
+	}
+
+
 	while (!stop) {
 		struct v4l2_buffer buf = { 0 };
 		const uint8_t *data;
@@ -349,13 +394,136 @@ out:
 	close(fd);
 }
 
+static int parse_u8(const char *s, const char *name)
+{
+	char *end;
+	long value;
+
+	errno = 0;
+	value = strtol(s, &end, 0);
+	if (s[0] == '\0' || *end != '\0' || errno || value < 0 ||
+	    value > 255)
+		errx(1, "invalid %s '%s' (expected 0-255)", name, s);
+
+	return (int)value;
+}
+
+static const char *default_shutter_config_path(void)
+{
+	static char path[PATH_MAX];
+	const char *xdg = getenv("XDG_CONFIG_HOME");
+	const char *home = getenv("HOME");
+
+	if (xdg && xdg[0])
+		snprintf(path, sizeof(path), "%s/ircam-viewer.conf", xdg);
+	else if (home && home[0])
+		snprintf(path, sizeof(path), "%s/.config/ircam-viewer.conf",
+			 home);
+	else
+		return NULL;
+
+	return path;
+}
+
+static void load_shutter_config(const char *path)
+{
+	char line[256];
+	FILE *f;
+
+	if (!path)
+		return;
+
+	f = fopen(path, "r");
+	if (!f)
+		return;
+
+	while (fgets(line, sizeof(line), f)) {
+		char key[64];
+		int value;
+
+		if (sscanf(line, " %63[^= \t]=%d", key, &value) != 2)
+			continue;
+
+		if (!strcmp(key, "shutter_auto") && shutter_auto < 0) {
+			if (value == 0 || value == 1)
+				shutter_auto = value;
+			else
+				warnx("ignoring invalid shutter_auto=%d", value);
+		} else if (!strcmp(key, "shutter_min") && shutter_min < 0) {
+			if (value >= 0 && value <= 255)
+				shutter_min = value;
+			else
+				warnx("ignoring invalid shutter_min=%d", value);
+		} else if (!strcmp(key, "shutter_max") && shutter_max < 0) {
+			if (value >= 0 && value <= 255)
+				shutter_max = value;
+			else
+				warnx("ignoring invalid shutter_max=%d", value);
+		} else if (!strcmp(key, "shutter_vtemp_thd") &&
+			   shutter_vtemp_thd < 0) {
+			if (value >= 0 && value <= 255)
+				shutter_vtemp_thd = value;
+			else
+				warnx("ignoring invalid shutter_vtemp_thd=%d",
+				      value);
+		}
+	}
+
+	fclose(f);
+}
+
+static void save_shutter_config(const char *path)
+{
+	FILE *f;
+
+	if (!path) {
+		warnx("cannot determine shutter config path");
+		return;
+	}
+
+	f = fopen(path, "w");
+	if (!f) {
+		warn("cannot write shutter config '%s'", path);
+		return;
+	}
+
+	fprintf(f, "# ircam-viewer shutter settings\n");
+	if (shutter_auto >= 0)
+		fprintf(f, "shutter_auto=%d\n", shutter_auto);
+	if (shutter_min >= 0)
+		fprintf(f, "shutter_min=%d\n", shutter_min);
+	if (shutter_max >= 0)
+		fprintf(f, "shutter_max=%d\n", shutter_max);
+	if (shutter_vtemp_thd >= 0)
+		fprintf(f, "shutter_vtemp_thd=%d\n", shutter_vtemp_thd);
+
+	if (fclose(f))
+		warn("cannot close shutter config '%s'", path);
+}
+
 __attribute__((noreturn)) static void show_help_and_die(void)
 {
 	puts("usage: ./ircam [ -c remote | -p recfile | -d dev [-n] [-l] ] "
-	     "[-f fontpath] [-w window_pixel_width] [-q]");
+	     "[-f fontpath] [-w window_pixel_width] [-r 0|90|180|270] "
+	     "[--shutter-auto 0|1] [--shutter-min N] [--shutter-max N] "
+	     "[--shutter-vtemp-thd N] [--shutter-manual] "
+	     "[--shutter-auto-get] [--shutter-config PATH] "
+	     "[--shutter-no-config] [--shutter-save] [-q]");
 
 	exit(1);
 }
+
+enum {
+	OPT_SHUTTER_AUTO = 1000,
+	OPT_SHUTTER_MIN,
+	OPT_SHUTTER_MAX,
+	OPT_SHUTTER_VTEMP_THD,
+	OPT_SHUTTER_MANUAL,
+	OPT_SHUTTER_AUTO_GET,
+	OPT_SHUTTER_CONFIG,
+	OPT_SHUTTER_NO_CONFIG,
+	OPT_SHUTTER_SAVE,
+};
 
 int main(int argc, char **argv)
 {
@@ -368,6 +536,18 @@ int main(int argc, char **argv)
 		{ "font", required_argument, NULL, 'f' },
 		{ "quiet", no_argument, NULL, 'q' },
 		{ "fullscreen", no_argument, NULL, 'F' },
+		{ "rotate", required_argument, NULL, 'r' },
+		{ "shutter-auto", required_argument, NULL, OPT_SHUTTER_AUTO },
+		{ "shutter-min", required_argument, NULL, OPT_SHUTTER_MIN },
+		{ "shutter-max", required_argument, NULL, OPT_SHUTTER_MAX },
+		{ "shutter-vtemp-thd", required_argument, NULL,
+		  OPT_SHUTTER_VTEMP_THD },
+		{ "shutter-manual", no_argument, NULL, OPT_SHUTTER_MANUAL },
+		{ "shutter-auto-get", no_argument, NULL, OPT_SHUTTER_AUTO_GET },
+		{ "shutter-config", required_argument, NULL, OPT_SHUTTER_CONFIG },
+		{ "shutter-no-config", no_argument, NULL,
+		  OPT_SHUTTER_NO_CONFIG },
+		{ "shutter-save", no_argument, NULL, OPT_SHUTTER_SAVE },
 		{ NULL, 0, NULL, 0 },
 	};
 	char v4[sizeof("::ffff:XXX.XXX.XXX.XXX")];
@@ -387,7 +567,7 @@ int main(int argc, char **argv)
 	sigaction(SIGHUP, &ignore_action, NULL);
 
 	while (1) {
-		int i = getopt_long(argc, argv, "hd:p:nw:f:lc:qF", opts, NULL);
+		int i = getopt_long(argc, argv, "hd:p:nw:f:lc:qFr:", opts, NULL);
 
 		switch (i) {
 		case 'd':
@@ -430,6 +610,44 @@ int main(int argc, char **argv)
 		case 'F':
 			fullscreen = true;
 			break;
+		case 'r':
+			rotation = atoi(optarg);
+			if (rotation != 0 && rotation != 90 &&
+			    rotation != 180 && rotation != 270)
+				errx(1, "invalid rotation '%s' (use 0, 90, 180, or 270)",
+				     optarg);
+			break;
+		case OPT_SHUTTER_AUTO:
+			shutter_auto = parse_u8(optarg, "shutter-auto");
+			if (shutter_auto > 1)
+				errx(1, "invalid shutter-auto '%s' (expected 0 or 1)",
+				     optarg);
+			break;
+		case OPT_SHUTTER_MIN:
+			shutter_min = parse_u8(optarg, "shutter-min");
+			break;
+		case OPT_SHUTTER_MAX:
+			shutter_max = parse_u8(optarg, "shutter-max");
+			break;
+		case OPT_SHUTTER_VTEMP_THD:
+			shutter_vtemp_thd =
+				parse_u8(optarg, "shutter-vtemp-thd");
+			break;
+		case OPT_SHUTTER_MANUAL:
+			shutter_manual = true;
+			break;
+		case OPT_SHUTTER_AUTO_GET:
+			shutter_get_auto = true;
+			break;
+		case OPT_SHUTTER_CONFIG:
+			shutter_config_path = optarg;
+			break;
+		case OPT_SHUTTER_NO_CONFIG:
+			shutter_no_config = true;
+			break;
+		case OPT_SHUTTER_SAVE:
+			shutter_save = true;
+			break;
 		case 'h':
 		default:
 			show_help_and_die();
@@ -438,6 +656,24 @@ int main(int argc, char **argv)
 		}
 	}
 done:
+
+	sdl_set_rotation(rotation);
+
+	{
+		const char *path = shutter_config_path ?
+					   shutter_config_path :
+					   default_shutter_config_path();
+
+		if (!shutter_no_config)
+			load_shutter_config(path);
+
+		if (shutter_save)
+			save_shutter_config(path);
+	}
+
+	if (shutter_min >= 0 && shutter_max >= 0 && shutter_min > shutter_max)
+		errx(1, "shutter-min (%d) must be <= shutter-max (%d)",
+		     shutter_min, shutter_max);
 
 	if (v4l2dev && filepath)
 		show_help_and_die();

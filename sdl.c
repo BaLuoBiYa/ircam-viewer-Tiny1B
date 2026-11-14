@@ -48,6 +48,13 @@ extern const uint8_t builtin_ttf_end;
 static const SDL_Color SDL_COLOR_RED = { 0xFF, 0, 0, 0xFF };
 static const SDL_Color SDL_COLOR_BLUE = { 0, 0, 0xFF, 0xFF };
 
+static int requested_rotation;
+
+void sdl_set_rotation(int degrees)
+{
+	requested_rotation = degrees;
+}
+
 /*
  * Lookup table for the Turbo colormap (see README).
  */
@@ -92,7 +99,13 @@ static const struct temp_fixp abszero = {
 	.minor = 10, // b10rev[15],
 };
 
-static struct temp_fixp raw_to_kelvin(uint16_t raw)
+/*
+ * The original ircam-viewer descriptors assume raw sensor values are
+ * Kelvin * 64.  The Tiny1B module used by the 0bda:3901 camera reports
+ * Kelvin * 16 instead.  Scale by 4 so the existing 1/64 fixed-point
+ * tables remain valid.
+ */
+static struct temp_fixp raw_to_kelvin(uint32_t raw)
 {
 	return (struct temp_fixp){
 		.major = raw >> 6,
@@ -126,7 +139,7 @@ static struct temp_fixp kelvin_to_celsius(struct temp_fixp t)
 
 static struct temp_fixp raw_to_celsius(uint16_t raw)
 {
-	return kelvin_to_celsius(raw_to_kelvin(raw));
+	return kelvin_to_celsius(raw_to_kelvin((uint32_t)raw * 4));
 }
 
 static struct temp_fixp celsius_to_fahrenheit(struct temp_fixp t)
@@ -167,7 +180,9 @@ struct sdl_ctx {
 	int gammafactor;
 	int contours;
 	bool invert;
-	bool rotate;
+	int rotation;
+	int disp_w;
+	int disp_h;
 	bool showhelp;
 	bool showlicense;
 	bool showinithelp;
@@ -204,19 +219,103 @@ static uint8_t getcolor(struct sdl_ctx *c, int color, uint8_t r)
 	return r;
 }
 
+static void source_to_display(const struct sdl_ctx *c, int sx, int sy,
+			     int *dx, int *dy)
+{
+	switch (c->rotation) {
+	case 90:
+		*dx = c->desc->height - 1 - sy;
+		*dy = sx;
+		break;
+	case 180:
+		*dx = c->desc->width - 1 - sx;
+		*dy = c->desc->height - 1 - sy;
+		break;
+	case 270:
+		*dx = sy;
+		*dy = c->desc->width - 1 - sx;
+		break;
+	default:
+		*dx = sx;
+		*dy = sy;
+		break;
+	}
+}
+
+static void display_to_source(const struct sdl_ctx *c, int dx, int dy,
+			      int *sx, int *sy)
+{
+	switch (c->rotation) {
+	case 90:
+		*sx = dy;
+		*sy = c->desc->height - 1 - dx;
+		break;
+	case 180:
+		*sx = c->desc->width - 1 - dx;
+		*sy = c->desc->height - 1 - dy;
+		break;
+	case 270:
+		*sx = c->desc->width - 1 - dy;
+		*sy = dx;
+		break;
+	default:
+		*sx = dx;
+		*sy = dy;
+		break;
+	}
+}
+
 static SDL_Point calc_point_from_buf_offset(const struct sdl_ctx *c,
 					    const int offset)
 {
-	if (c->rotate) {
-		return (SDL_Point){
-			c->desc->width - (offset / 2 % c->desc->width),
-			c->desc->height - (offset / 2 / c->desc->width)
-		};
-	}
-
 	return (SDL_Point){ offset / 2 % c->desc->width,
 			    offset / 2 / c->desc->width };
 }
+static void sdl_rotate(struct sdl_ctx *c, int delta)
+{
+	int sx, sy, new_w, new_h;
+
+	/* Changing geometry in the middle of an RGB recording would corrupt it. */
+	if (c->vrecord) {
+		lavc_end_encode(c->vrecord);
+		c->vrecord = NULL;
+	}
+
+	display_to_source(c, c->crosshair.x, c->crosshair.y, &sx, &sy);
+	c->rotation = (c->rotation + delta + 360) % 360;
+	new_w = (c->rotation == 90 || c->rotation == 270) ?
+			c->desc->height : c->desc->width;
+	new_h = (c->rotation == 90 || c->rotation == 270) ?
+			c->desc->width : c->desc->height;
+	c->disp_w = new_w;
+	c->disp_h = new_h;
+	source_to_display(c, sx, sy, &c->crosshair.x, &c->crosshair.y);
+	if (c->crosshair.x < 0)
+		c->crosshair.x = 0;
+	if (c->crosshair.x >= new_w)
+		c->crosshair.x = new_w - 1;
+	if (c->crosshair.y < 0)
+		c->crosshair.y = 0;
+	if (c->crosshair.y >= new_h)
+		c->crosshair.y = new_h - 1;
+
+	SDL_DestroyTexture(c->t);
+	c->t = SDL_CreateTexture(c->r, SDL_PIXELFORMAT_BGRA32,
+				 SDL_TEXTUREACCESS_STREAMING, new_w, new_h);
+	if (!c->t)
+		errx(1, "Can't create SDL texture: %s", SDL_GetError());
+
+	SDL_RenderSetLogicalSize(c->r, new_w, new_h);
+
+	if (!(SDL_GetWindowFlags(c->w) &
+	      (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_FULLSCREEN_DESKTOP))) {
+		int ww, wh;
+
+		SDL_GetWindowSize(c->w, &ww, &wh);
+		SDL_SetWindowSize(c->w, wh, ww);
+	}
+}
+
 
 static void update_crosshair_color(struct sdl_ctx *c)
 {
@@ -295,10 +394,10 @@ static void showtexts(struct sdl_ctx *c, struct temp_fixp max,
 	if (c->paused && c->pb)
 		drawtext(c, 46, 21, "[PAUSE]");
 
-	drawtext(c, c->desc->width - 40, 1, "[%05" PRIu32 ".%02" PRIu32 "]",
+	drawtext(c, c->disp_w - 40, 1, "[%05" PRIu32 ".%02" PRIu32 "]",
 		 seq / 25, (seq % 25) * 4);
 
-	drawtext(c, c->desc->width - 45, 8, "% 5" PRId64 " DROPS",
+	drawtext(c, c->disp_w - 45, 8, "% 5" PRId64 " DROPS",
 		 (int64_t)seq - c->frame_paint_seq);
 
 	if (c->showinithelp) {
@@ -346,7 +445,7 @@ static void showhelptext(struct sdl_ctx *c)
 	drawtext(c, 40, 107, "Y: TOGGLE CONTOURING");
 	drawtext(c, 40, 114, "F: TOGGLE UNITS F/C");
 	drawtext(c, 40, 121, "I: TOGGLE INVERT");
-	drawtext(c, 40, 128, "U: TOGGLE OUTPUT ROTATION");
+	drawtext(c, 40, 128, "U: ROTATE 90 DEGREES");
 	drawtext(c, 40, 135, "C: TOGGLE GRAYSCALE");
 	drawtext(c, 40, 142, "ARROW KEYS MOVE CROSS");
 	drawtext(c, 40, 149, "SPACEBAR PAUSES PLAYBACK");
@@ -436,7 +535,7 @@ static int sdl_poll_one(struct sdl_ctx *c, SDL_Event *evt, uint16_t min,
 			break;
 
 		case SDL_SCANCODE_U:
-			c->rotate = !c->rotate;
+			sdl_rotate(c, 90);
 			break;
 
 		case SDL_SCANCODE_D:
@@ -498,8 +597,8 @@ static int sdl_poll_one(struct sdl_ctx *c, SDL_Event *evt, uint16_t min,
 			snprintf(path, sizeof(path), "%lld-rgb.mkv",
 				 (long long)time(NULL));
 
-			c->vrecord = lavc_start_encode(path, c->desc->width,
-						       c->desc->height,
+			c->vrecord = lavc_start_encode(path, c->disp_w,
+						       c->disp_h,
 						       c->desc->fps,
 						       AV_PIX_FMT_BGRA);
 			break;
@@ -514,7 +613,7 @@ static int sdl_poll_one(struct sdl_ctx *c, SDL_Event *evt, uint16_t min,
 
 		case SDL_SCANCODE_RIGHT:
 			c->crosshair.x++;
-			if (c->crosshair.x >= c->desc->width)
+			if (c->crosshair.x >= c->disp_w)
 				c->crosshair.x = 0;
 
 			break;
@@ -522,20 +621,20 @@ static int sdl_poll_one(struct sdl_ctx *c, SDL_Event *evt, uint16_t min,
 		case SDL_SCANCODE_LEFT:
 			c->crosshair.x--;
 			if (c->crosshair.x < 0)
-				c->crosshair.x = c->desc->width - 1;
+				c->crosshair.x = c->disp_w - 1;
 
 			break;
 
 		case SDL_SCANCODE_UP:
 			c->crosshair.y--;
 			if (c->crosshair.y < 0)
-				c->crosshair.y = c->desc->height - 1;
+				c->crosshair.y = c->disp_h - 1;
 
 			break;
 
 		case SDL_SCANCODE_DOWN:
 			c->crosshair.y++;
-			if (c->crosshair.y >= c->desc->height)
+			if (c->crosshair.y >= c->disp_h)
 				c->crosshair.y = 0;
 
 			break;
@@ -609,12 +708,12 @@ int paint_frame(struct sdl_ctx *c, uint32_t seq, const uint8_t *data)
 	SDL_Event evt;
 	SDL_Rect rect;
 
-	// Get temperature at crosshair
-	i = c->crosshair.y * c->desc->width * 2 + c->crosshair.x * 2;
-	if (c->rotate) {
-		// Mirror crosshair if output is rotated
-		i = c->desc->width * c->desc->height * 2 - i;
-	}
+	/* Get temperature at the crosshair (stored in display coords). */
+	int crosshair_sx, crosshair_sy;
+
+	display_to_source(c, c->crosshair.x, c->crosshair.y,
+			  &crosshair_sx, &crosshair_sy);
+	i = crosshair_sy * c->desc->width * 2 + crosshair_sx * 2;
 	ptemp = data[i] | data[i + 1] << 8;
 
 	for (i = 0; i < c->desc->width * c->desc->height * 2; i += 2) {
@@ -631,8 +730,8 @@ int paint_frame(struct sdl_ctx *c, uint32_t seq, const uint8_t *data)
 
 	rect.y = 0;
 	rect.x = 0;
-	rect.w = c->desc->width;
-	rect.h = c->desc->height;
+	rect.w = c->disp_w;
+	rect.h = c->disp_h;
 
 	if (SDL_LockTexture(c->t, &rect, (void **)&memptr, &pitch))
 		return -1;
@@ -649,7 +748,7 @@ int paint_frame(struct sdl_ctx *c, uint32_t seq, const uint8_t *data)
 	}
 
 	if (min >= max) {
-		memset(memptr, 0, c->desc->width * c->desc->height * 4);
+		memset(memptr, 0, c->disp_w * c->disp_h * 4);
 		goto skippaint;
 	}
 
@@ -678,18 +777,14 @@ int paint_frame(struct sdl_ctx *c, uint32_t seq, const uint8_t *data)
 		else
 			pval = (multinv * (raw - min)) >> 16;
 
-		if (c->rotate) {
-			/*
-			 * Rotating the output by 180 is equivalent to iterating
-			 * through the flattened RGBA array backwards, but still
-			 * filling BGRA values in the same order (== subtract a
-			 * constant of 4).
-			 */
-			output_index =
-				(c->desc->width * c->desc->height - i / 2) * 4 -
-				4;
-		} else {
-			output_index = i / 2 * 4;
+		{
+			int src = i / 2;
+			int sx = src % c->desc->width;
+			int sy = src / c->desc->width;
+			int dx, dy;
+
+			source_to_display(c, sx, sy, &dx, &dy);
+			output_index = (dy * c->disp_w + dx) * 4;
 		}
 
 		memptr[output_index] = getcolor(c, BLUE, pval);
@@ -718,8 +813,14 @@ skippaint:
 					     &c->crosshair_color);
 
 		if (c->show_min_max_marker && !c->paused) {
-			paint_colored_marker(c, &min_point, 1, &SDL_COLOR_BLUE);
-			paint_colored_marker(c, &max_point, 1, &SDL_COLOR_RED);
+			SDL_Point min_disp, max_disp;
+
+			source_to_display(c, min_point.x, min_point.y,
+					  &min_disp.x, &min_disp.y);
+			source_to_display(c, max_point.x, max_point.y,
+					  &max_disp.x, &max_disp.y);
+			paint_colored_marker(c, &min_disp, 1, &SDL_COLOR_BLUE);
+			paint_colored_marker(c, &max_disp, 1, &SDL_COLOR_RED);
 		}
 	}
 
@@ -778,15 +879,20 @@ struct sdl_ctx *sdl_open(int upscaled_width, int upscaled_height,
 		return NULL;
 
 	c->desc = desc;
+	c->rotation = requested_rotation;
+	c->disp_w = (c->rotation == 90 || c->rotation == 270) ?
+			    c->desc->height : c->desc->width;
+	c->disp_h = (c->rotation == 90 || c->rotation == 270) ?
+			    c->desc->width : c->desc->height;
 	c->inittsmono = now_mono();
 	c->pb = pb;
 	c->colormap = 1;
 	c->showtext = 1;
-	c->fahren = 1;
+	c->fahren = 0;
 	c->contours = 1;
 	c->textval = 255;
-	c->crosshair.x = c->desc->width / 2;
-	c->crosshair.y = c->desc->height / 2;
+	c->crosshair.x = c->disp_w / 2;
+	c->crosshair.y = c->disp_h / 2;
 	update_crosshair_color(c);
 	c->fontpath = strdup(fontpath);
 	c->fonttmp = font_tmpfile;
@@ -801,6 +907,13 @@ struct sdl_ctx *sdl_open(int upscaled_width, int upscaled_height,
 
 	if (fullscreen)
 		window_flags |= SDL_WINDOW_FULLSCREEN;
+
+	if (c->rotation == 90 || c->rotation == 270) {
+		int win_tmp = upscaled_width;
+
+		upscaled_width = upscaled_height;
+		upscaled_height = win_tmp;
+	}
 
 	c->w = SDL_CreateWindow(window_name, SDL_WINDOWPOS_UNDEFINED,
 				SDL_WINDOWPOS_UNDEFINED, upscaled_width,
@@ -820,7 +933,7 @@ struct sdl_ctx *sdl_open(int upscaled_width, int upscaled_height,
 			errx(1, "Can't create SW renderer: %s", SDL_GetError());
 	}
 
-	SDL_RenderSetLogicalSize(c->r, c->desc->width, c->desc->height);
+	SDL_RenderSetLogicalSize(c->r, c->disp_w, c->disp_h);
 	SDL_ShowCursor(SDL_DISABLE);
 
 	/*
@@ -828,8 +941,8 @@ struct sdl_ctx *sdl_open(int upscaled_width, int upscaled_height,
 	 * supports BGR. So we just use BGR everywhere...
 	 */
 	c->t = SDL_CreateTexture(c->r, SDL_PIXELFORMAT_BGRA32,
-				 SDL_TEXTUREACCESS_STREAMING, c->desc->width,
-				 c->desc->height);
+				 SDL_TEXTUREACCESS_STREAMING, c->disp_w,
+				 c->disp_h);
 	if (!c->t)
 		errx(1, "Can't create SDL texture: %s", SDL_GetError());
 

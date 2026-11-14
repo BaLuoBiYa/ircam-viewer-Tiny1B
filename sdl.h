@@ -33,6 +33,8 @@ enum paint_frame_action {
 
 #ifndef IRCAM_NOSDL
 
+void sdl_set_rotation(int degrees);
+
 struct sdl_ctx *sdl_open(int upscaled_width, int upscaled_height,
 			 const struct ircam_desc *desc, bool pb,
 			 const char *fontpath, bool hidehelp, bool fullscreen);
@@ -48,6 +50,10 @@ void sdl_close(struct sdl_ctx *c);
 struct sdl_ctx {
 	bool unused;
 };
+
+static inline void sdl_set_rotation(int degrees)
+{
+}
 
 static inline struct sdl_ctx *sdl_open(int w, int h, const struct ircam_desc *d,
 				       bool p, const char *f, bool i, bool l)
