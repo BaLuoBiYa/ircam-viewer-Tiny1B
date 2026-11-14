@@ -1,0 +1,9 @@
+ircam-viewer (1.0.0-1) unstable; urgency=medium
+
+  * Initial Debian packaging.
+  * Reorganize sources under src/ and build outputs under build/.
+  * Add an install target to the upstream Makefile.
+  * Install a desktop entry, icon, manual page, and generic documentation.
+  * Do not install device-specific udev rules.
+
+ -- BaLuoBiYa <Louie.LiuHaoYu@outlook.com>  Sat, 14 Nov 2026 23:45:00 +0800

@@ -7,3 +7,13 @@ sisyphus
 !builtin.s
 *.mkv
 doc/*
+build/
+debian/.debhelper/
+debian/files
+debian/*.substvars
+debian/ircam-viewer/
+debian/debhelper-build-stamp
+debian/*.debhelper
+debian/*.debhelper.log
+debian/tmp/
+dist/

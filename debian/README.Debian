@@ -1,0 +1,22 @@
+No model-specific device rules
+------------------------------
+This package intentionally does not install udev rules for individual camera
+models. Video capture uses the standard uvcvideo device permissions.
+
+Some cameras expose vendor-specific controls over raw USB. Those controls are
+optional, and granting access to a raw USB device is an administrative policy
+decision. This package does not change device permissions or install rules for
+particular hardware.
+
+Configuration
+-------------
+Shutter settings are stored per user in:
+
+  $XDG_CONFIG_HOME/ircam-viewer.conf
+
+or, when XDG_CONFIG_HOME is unset:
+
+  $HOME/.config/ircam-viewer.conf
+
+The configuration file is not shipped by the package; it is created when the
+user asks ircam to save settings.

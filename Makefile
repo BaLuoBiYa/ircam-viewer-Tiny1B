@@ -11,49 +11,82 @@ WFLAGS = -Wall -Wextra -Wstrict-prototypes -Wmissing-prototypes -Wno-switch \
 	 -Wformat=2 -Wstrict-aliasing -Wno-unknown-warning-option \
 	 -Wno-format-nonliteral -Wpedantic
 
-all: ircam util/kfwd util/sisyphus
-nosdl: ircam-nosdl
+SRC_DIR ?= src
+BUILD_DIR ?= build
+OBJ_DIR := $(BUILD_DIR)/obj
+NOSDL_OBJ_DIR := $(BUILD_DIR)/obj-nosdl
+BIN := $(BUILD_DIR)/ircam
+NOSDL_BIN := $(BUILD_DIR)/ircam-nosdl
 
-debug: CFLAGS := -g -Og -fsanitize=address $(BASE_CFLAGS)
-debug: all
+PREFIX ?= /usr
+BINDIR ?= $(PREFIX)/bin
 
-FMTSRCS = inet.c inet.h lavc.c lavc.h main.c sdl.c sdl.h v4l2.c v4l2.h dev.c \
-	  dev.h uvc.c uvc.h util/kfwd.c
+SDL_C_SRCS = main.c dev.c v4l2.c lavc.c inet.c sdl.c fontcache.c uvc.c
+SDL_OBJS = $(addprefix $(OBJ_DIR)/,$(SDL_C_SRCS:.c=.o)) $(OBJ_DIR)/builtin.o
+NOSDL_C_SRCS = main.c dev.c v4l2.c lavc.c inet.c uvc.c
+NOSDL_OBJS = $(addprefix $(NOSDL_OBJ_DIR)/,$(NOSDL_C_SRCS:.c=.o))
+NOSDL_CFLAGS = -DIRCAM_NOSDL -Wno-unused-parameter
+
+.PHONY: all nosdl debug format clean install package
+
+all: $(BIN) $(BUILD_DIR)/util/kfwd $(BUILD_DIR)/util/sisyphus
+nosdl: $(NOSDL_BIN)
+
+debug:
+	$(MAKE) BUILD_DIR=build/debug \
+		CFLAGS="-g -Og -fsanitize=address $(BASE_CFLAGS)" \
+		LDFLAGS="$(LDFLAGS) -fsanitize=address" all
+
+FMTSRCS = $(addprefix $(SRC_DIR)/,inet.c inet.h lavc.c lavc.h main.c sdl.c \
+	  sdl.h v4l2.c v4l2.h dev.c dev.h uvc.c uvc.h util/kfwd.c)
 
 format:
 	clang-format -i $(FMTSRCS)
 
-sdl.s: gamma.h
-sdl.o: gamma.h
-
-ircam: main.o dev.o v4l2.o lavc.o inet.o sdl.o fontcache.o builtin.o uvc.o
+$(BIN): $(SDL_OBJS)
+	@mkdir -p $(dir $@)
 	$(CC) -o $@ $^ $(CFLAGS) $(LDFLAGS) -lSDL2 -lSDL2_ttf -lavcodec -lavutil -lavformat
 
-ircam-nosdl: CFLAGS += -DIRCAM_NOSDL -Wno-unused-parameter
-ircam-nosdl: main.o dev.o v4l2.o lavc.o inet.o uvc.o
+$(NOSDL_BIN): $(NOSDL_OBJS)
+	@mkdir -p $(dir $@)
 	$(CC) -o $@ $^ $(CFLAGS) $(LDFLAGS) -lavcodec -lavutil -lavformat
 
-util/kfwd: util/kfwd.o
+$(BUILD_DIR)/util/kfwd: $(OBJ_DIR)/util/kfwd.o
+	@mkdir -p $(dir $@)
 	$(CC) -o $@ $^ $(CFLAGS) $(LDFLAGS)
 
-util/sisyphus: util/sisyphus.o
+$(BUILD_DIR)/util/sisyphus: $(OBJ_DIR)/util/sisyphus.o
+	@mkdir -p $(dir $@)
 	$(CC) -o $@ $^ $(CFLAGS) $(LDFLAGS)
 
-gamma.h:
-	./util/gamma.py > gamma.h
+$(SRC_DIR)/gamma.h: $(SRC_DIR)/util/gamma.py
+	$(SRC_DIR)/util/gamma.py > $@
 
-%.o: %.c
-	$(CC) $< $(CFLAGS) $(WFLAGS) -c -o $@
+$(OBJ_DIR)/sdl.o: $(SRC_DIR)/gamma.h
 
-%.s: %.c
-	$(CC) $< $(CFLAGS) -fverbose-asm $(WFLAGS) -S -c -o $@
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $< $(CPPFLAGS) $(CFLAGS) $(WFLAGS) -c -o $@
 
-%.o: %.s
-	$(CC) $< -c -o $@
+$(NOSDL_OBJ_DIR)/%.o: $(SRC_DIR)/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $< $(CPPFLAGS) $(CFLAGS) $(NOSDL_CFLAGS) $(WFLAGS) -c -o $@
 
 # Don't enable any warnings for FC_FontCache
-fontcache.o: fontcache.c
-	$(CC) $< $(CFLAGS) -c -o $@
+$(OBJ_DIR)/fontcache.o: $(SRC_DIR)/fontcache.c
+	@mkdir -p $(dir $@)
+	$(CC) $< $(CPPFLAGS) $(CFLAGS) -c -o $@
+
+$(OBJ_DIR)/builtin.o: $(SRC_DIR)/builtin.s $(SRC_DIR)/fonts/deja_vu_sans_mono.ttf
+	@mkdir -p $(dir $@)
+	$(CC) $< -c -o $@
 
 clean:
-	rm -f ircam ircam-nosdl util/kfwd util/sisyphus *.o fonts/*.o util/*.o
+	rm -rf $(BUILD_DIR)
+	rm -f ircam ircam-nosdl *.o
+
+install: $(BIN)
+	install -Dm755 $(BIN) $(DESTDIR)$(BINDIR)/ircam
+
+package:
+	./scripts/package-deb.sh

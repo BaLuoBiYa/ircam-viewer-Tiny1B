@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=IR Camera Viewer
+GenericName=Infrared Camera Viewer
+Comment=View and record USB infrared cameras
+Exec=ircam
+TryExec=ircam
+Icon=ircam-viewer
+Terminal=false
+Categories=Graphics;
+Keywords=thermal;infrared;camera;ircam;video;
+StartupNotify=true

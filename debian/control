@@ -1,0 +1,25 @@
+Source: ircam-viewer
+Section: graphics
+Priority: optional
+Maintainer: BaLuoBiYa <Louie.LiuHaoYu@outlook.com>
+Build-Depends: debhelper-compat (= 13),
+               libsdl2-dev,
+               libsdl2-ttf-dev,
+               libavcodec-dev,
+               libavformat-dev,
+               libavutil-dev
+Standards-Version: 4.7.0
+Rules-Requires-Root: no
+Homepage: https://github.com/jcalvinowens/ircam-viewer
+
+Package: ircam-viewer
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Suggests: ffmpeg
+Description: Linux viewer for USB infrared cameras
+ ircam is a lightweight GUI for viewing and recording output from USB
+ infrared cameras supported by the Linux uvcvideo driver.
+ .
+ It supports lossless 16-bit FFV1 recording, playback of recorded frames,
+ live keyboard control of the view, and optional vendor-specific shutter
+ controls for cameras that expose them.

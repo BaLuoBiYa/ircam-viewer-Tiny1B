@@ -1,0 +1,3 @@
+debian/ircam-viewer.desktop usr/share/applications
+debian/ircam-viewer.svg usr/share/icons/hicolor/scalable/apps
+debian/ircam-viewer.png usr/share/icons/hicolor/256x256/apps

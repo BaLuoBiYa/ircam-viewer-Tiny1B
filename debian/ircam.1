@@ -1,0 +1,192 @@
+.TH IRCAM 1 "2026-11-14" "ircam-viewer 1.0.0" "User Commands"
+.SH NAME
+ircam \- view and record USB infrared cameras
+.SH SYNOPSIS
+.B ircam
+.RI [ options ]
+.SH DESCRIPTION
+.B ircam
+displays and records video from USB infrared cameras supported by the Linux
+.B uvcvideo
+driver.  It can show a live view, play back recordings, record lossless 16-bit
+FFV1 video, and record the rendered RGB view.
+.PP
+The viewer is controlled primarily with the keyboard.  Press
+.B H
+to display the built-in help while running.
+.SH OPTIONS
+.TP
+.BR \-d ", " \-\-device " " \fIdevice\fR
+Use the specified V4L2 device, for example
+.IR /dev/video0 .
+Without this option,
+.B ircam
+tries to autodetect a supported camera.
+.TP
+.BR \-p ", " \-\-playback " " \fIfile\fR
+Play back a previously recorded file instead of opening a camera.
+.TP
+.BR \-n ", " \-\-record\-only
+Record 16-bit video without opening a display window.
+.TP
+.BR \-l
+Listen for a native remote-viewing client on TCP port 8888.
+.TP
+.BR \-c " " \fIaddress\fR
+Connect to a remote
+.B ircam
+instance at the given IPv4 or IPv6 address.
+.TP
+.BR \-w ", " \-\-width " " \fIpixels\fR
+Set the initial window width.  The height is set to three quarters of the
+width.
+.TP
+.BR \-r ", " \-\-rotate " " \fIdegrees\fR
+Set the initial rotation to 0, 90, 180, or 270 degrees.
+.TP
+.BR \-f ", " \-\-font " " \fIpath\fR
+Use the given TrueType font instead of the built-in font.
+.TP
+.BR \-F ", " \-\-fullscreen
+Start in fullscreen mode.
+.TP
+.BR \-q ", " \-\-quiet
+Suppress the initial help text.
+.TP
+.BR \-h ", " \-\-help
+Show usage information and exit.
+.SS Vendor-specific shutter controls
+These options are available only on cameras that expose the corresponding
+vendor controls.  They also require permission to access the camera's raw USB
+device; this package does not grant that permission.
+.TP
+.BR \-\-shutter\-auto " " \fI0|1\fR
+Enable or disable automatic shutter calibration.
+.TP
+.BR \-\-shutter\-min " " \fIN\fR
+Set the minimum automatic-shutter interval to a firmware-defined value in the
+range 0 to 255.
+.TP
+.BR \-\-shutter\-max " " \fIN\fR
+Set the maximum automatic-shutter interval to a firmware-defined value in the
+range 0 to 255.
+.TP
+.BR \-\-shutter\-vtemp\-thd " " \fIN\fR
+Set the sensor-temperature threshold to a firmware-defined value in the range
+0 to 255.
+.TP
+.BR \-\-shutter\-manual
+Trigger one manual shutter calibration.
+.TP
+.BR \-\-shutter\-auto\-get
+Print the current automatic-shutter flag.
+.TP
+.BR \-\-shutter\-config " " \fIpath\fR
+Read and write shutter settings from the given file instead of the default
+per-user configuration file.
+.TP
+.BR \-\-shutter\-no\-config
+Ignore the configuration file for this run.
+.TP
+.BR \-\-shutter\-save
+Write the effective shutter settings to the configuration file.
+.SH KEY BINDINGS
+.TP
+.B H
+Show help while held.
+.TP
+.B L
+Show license information while held.
+.TP
+.B C
+Toggle between grayscale and the color map.
+.TP
+.B I
+Invert the display.
+.TP
+.B G
+Cycle through gamma-correction settings.
+.TP
+.B Y
+Cycle through contouring settings.
+.TP
+.B E
+Return the view dynamic range to automatic mode.
+.TP
+.B D
+Enter manual view dynamic range mode.
+.TP
+.B Q
+Raise the manual minimum.
+.TP
+.B A
+Lower the manual minimum.
+.TP
+.B W
+Raise the manual maximum.
+.TP
+.B S
+Lower the manual maximum.
+.TP
+.B Z
+Set the manual minimum to its lowest value.
+.TP
+.B X
+Set the manual maximum to its highest value.
+.TP
+.B T
+Cycle the on-screen text between white, black, and off.
+.TP
+.B F
+Toggle between Celsius and Fahrenheit.
+.TP
+.B M
+Toggle the small minimum and maximum markers.
+.TP
+.B U
+Rotate the display by 90 degrees.
+.TP
+.B R
+Start or stop 16-bit recording.
+.TP
+.B V
+Start or stop RGB recording.
+.TP
+.B Arrow keys
+Move the measurement crosshair.
+.TP
+.B Space
+Pause or resume playback.
+.TP
+.B Esc
+Quit.
+.SH FILES
+.TP
+.I $XDG_CONFIG_HOME/ircam-viewer.conf
+Per-user shutter configuration.
+.TP
+.I $HOME/.config/ircam-viewer.conf
+Default location used when
+.B XDG_CONFIG_HOME
+is unset.
+.SH ENVIRONMENT
+.TP
+.B XDG_CONFIG_HOME
+Base directory for the per-user configuration file.
+.TP
+.B HOME
+Used to locate the default configuration directory when
+.B XDG_CONFIG_HOME
+is unset.
+.SH NOTES
+Video capture requires access to the relevant
+.I /dev/video*
+device.  Access is normally provided by the system's standard uvcvideo
+permissions.
+.PP
+Vendor-specific USB controls require additional device permissions.  This
+package does not install rules for individual camera models and does not
+change system device permissions.
+.SH SEE ALSO
+.BR ffmpeg (1),
+.BR v4l2\-ctl (1)

@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="101 325 826 826">
+  <defs>
+    <linearGradient id="body" x1="0" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#86118b"/>
+      <stop offset="0.48" stop-color="#68106f"/>
+      <stop offset="1" stop-color="#4d0757"/>
+    </linearGradient>
+    <linearGradient id="bodyEdge" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#a323a1"/>
+      <stop offset="1" stop-color="#58085f"/>
+    </linearGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#bd2aaf"/>
+      <stop offset="0.48" stop-color="#8b168b"/>
+      <stop offset="1" stop-color="#641064"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="0.15" y1="0" x2="0.88" y2="1">
+      <stop offset="0" stop-color="#ffb12d"/>
+      <stop offset="0.43" stop-color="#ff8d36"/>
+      <stop offset="0.72" stop-color="#f43d82"/>
+      <stop offset="1" stop-color="#c400a5"/>
+    </linearGradient>
+    <linearGradient id="wave" x1="0.1" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#f14a76"/>
+      <stop offset="1" stop-color="#c500a9"/>
+    </linearGradient>
+    <linearGradient id="orange" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffb52e"/>
+      <stop offset="1" stop-color="#ff8a2c"/>
+    </linearGradient>
+    <clipPath id="lensClip">
+      <circle cx="547" cy="772" r="136"/>
+    </clipPath>
+  </defs>
+
+  <!-- Camera body and raised viewfinder housing -->
+  <path d="M142 643
+           C142 597 180 560 228 560
+           H365
+           L421 505
+           C438 488 460 479 484 479
+           H610
+           C638 479 660 488 680 507
+           L730 560
+           H804
+           C849 560 885 596 885 642
+           V916
+           C885 961 849 997 804 997
+           H223
+           C178 997 142 961 142 916 Z"
+        fill="url(#body)" stroke="#4d0757" stroke-width="1.4"/>
+
+  <!-- Subtle top-left flash housing -->
+  <path d="M228 559 H316 V581
+           C316 590 309 597 300 597
+           H244 C235 597 228 590 228 581 Z"
+        fill="url(#orange)" stroke="#ffbd3c" stroke-width="1.1"/>
+
+  <!-- Small indicator / shutter button -->
+  <circle cx="804.5" cy="635.5" r="27" fill="url(#orange)" stroke="#ffb52f" stroke-width="1.2"/>
+
+  <!-- Lens outer bezel -->
+  <circle cx="547" cy="773" r="183" fill="url(#ring)" stroke="#a3229d" stroke-width="1.2"/>
+  <circle cx="547" cy="773" r="153.5" fill="#3f0849" stroke="#b12a9f" stroke-width="1.2"/>
+  <circle cx="547" cy="773" r="136" fill="url(#glass)"/>
+
+  <!-- Abstract warm-to-magenta thermal image inside the lens -->
+  <g clip-path="url(#lensClip)">
+    <path d="M405 862
+             C434 828 458 810 489 810
+             C526 810 554 817 581 786
+             C604 759 611 737 646 728
+             C668 722 692 726 711 740
+             L711 920 L405 920 Z"
+          fill="url(#wave)"/>
+    <path d="M405 862
+             C434 828 458 810 489 810
+             C526 810 554 817 581 786
+             C604 759 611 737 646 728
+             C668 722 692 726 711 740"
+          fill="none" stroke="#ec3d83" stroke-width="1.4" opacity="0.75"/>
+  </g>
+
+  <!-- Fine lens rim highlight -->
+  <circle cx="547" cy="773" r="136.8" fill="none" stroke="#f04b9b" stroke-opacity="0.28" stroke-width="1"/>
+</svg>

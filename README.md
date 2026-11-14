@@ -1,294 +1,164 @@
-Linux Infrared Camera Viewer
-============================
+# ircam-viewer（Tiny1B 修改版）
 
-A lightweight GUI for viewing and recording output from USB infrared cameras.
+本工程是基于 [jcalvinowens/ircam-viewer](https://github.com/jcalvinowens/ircam-viewer)
+的修改版本，
 
-![](https://static.wbinvd.org/img/ircam/ss8.png)
+<https://github.com/jcalvinowens/ircam-viewer>
 
-Features include:
+本工程基于上游提交 `8f60f06`（Add support for Thermal Master P2）修改而来。
 
-* FFV1 lossless 16-bit video recording
-* Native support for remote viewing over the network
-* Full manual control of view dynamic range in software
-* Runs both under X and as a standalone program (see [meta-ircam-viewer](https://github.com/jcalvinowens/meta-ircam-viewer))
-* Font caching using [SDL_FontCache](https://github.com/grimfang4/SDL_FontCache)
-* Precomputed gamma correction lookup tables
-* Fixed point arithmetic
+## 修改
 
-These IR camera models are known to be supported:
+- 增加 Tiny1B / CT256 的 UVC vendor 快门控制，不依赖 `libiruvc`。
+- 增加快门设置持久化，支持从命令行或配置文件加载。
+- 修正 Tiny1B 温度原始值的缩放（Kelvin × 16），默认显示摄氏度。
+- 将输出旋转从 180° 翻转改为 90° 步进旋转。
+- 增加 Debian 打包文件，提供桌面入口、图标和 man page。
 
-* A-BF RX-450
-* TOPDON TC001
-* TOPDON TS001
-* InfiRay P2 Pro
-* Thermal Master P2
+## 目录结构
 
-If your camera works but isn't in the list above, please file a PR on github or
-codeberg to add it.
+```text
+.
+├── src/                 # C 源码、头文件和内嵌字体
+│   ├── fonts/
+│   └── util/            # gamma.py、kfwd、sisyphus
+├── build/               # make 生成的编译产物（不纳入版本控制）
+├── dist/                # 打包产物（不纳入版本控制）
+├── scripts/             # 打包辅助脚本
+├── debian/              # Debian 打包文件
+├── Makefile
+├── README.md
+└── LICENSE
+```
 
-If your camera doesn't work, and you're willing to do some homework for me to
-help me get it working, please open an issue on Github and provide the complete
-output from `strace -vvv -e ioctl ./ircam 2>&1 | grep -v DRM | head -n20`, and
-from `ffmpeg -f v4l2 -list_formats all -i /dev/videoX`.
+## 构建
 
-If you prefer to send patches by E-mail, send them to `calvin@wbinvd.org`.
-Please run `make format` before submitting.
-
-Building
---------
-
-`$ sudo apt install libsdl2-dev libsdl2-ttf-dev libavcodec-dev libavformat-dev`
-
-`$ make -j -s`
-
-If you only plan to use the program in headless mode (-n and/or -l), you can use
-the `nosdl` target to build a smaller binary which does not depend on SDL2:
-
-`$ sudo apt install libavcodec-dev libavformat-dev`
-
-`$ make -j -s nosdl`
-
-Yocto
------
-
-The [meta-ircam-viewer](https://github.com/jcalvinowens/meta-ircam-viewer) Yocto
-layer builds firmware for an "appliance" which does nothing but run this
-program when a USB IR camera is connected.
-
-It supports generic UEFI x86 PCs and all Raspberry Pi models. You can download
-pre-built disk images on the
-[github releases page](https://github.com/jcalvinowens/meta-ircam-viewer/releases)
-
-Viewing
--------
-
-`$ ./ircam`
-
-The program should autodetect your IR camera: if for some reason it doesn't, or
-if you have multiple IR cameras connected, you can force the program to connect
-to a specific camera using the `-d` flag, i.e. `./ircam -d /dev/video4`.
-
-![](https://static.wbinvd.org/img/ircam/ss4.png)
-
-In the upper left, you'll find the minimum, point measurement, and maximum
-temperatures. The second row shows the current view dynamic range limits, or
-AUTO in automatic mode. The third row shows gamma correction and contouring
-settings.
-
-The point measurement is the temperature at the center of the cross. The
-temperatures are displayed at the true underlying granularity. The viewer is
-controlled entirely using the keyboard, the mouse doesn't do anything (yet).
-The emissivity is always assumed to be 1.0.
-
-You can view the help text at any time by holding the [H] key:
-
-![](https://static.wbinvd.org/img/ircam/ss7.png)
-
-The [C] key toggles between grayscale and the Turbo colormap. [I] inverts the
-sense of the display, and [G] toggles through gamma correction options.
-
-![](https://static.wbinvd.org/img/ircam/ss1.png)
-
-The [Y] key enables "contouring": this repeats the colormap N times through the
-current view dynamic range instead of just once, allowing you to visualize more
-than eight bits on your 8-bit display.
-
-![](https://static.wbinvd.org/img/ircam/ss5.png)
-
-Dynamic range (or exposure) starts in AUTO mode. Pressing [E] at any time will
-revert to AUTO. Pressing [D] enters manual mode, pinning the min/max of the view
-dynamic range at their current values.
-
-![](https://static.wbinvd.org/img/ircam/ss2.png)
-
-In manual mode, [Q] and [A] raise and lower the minimum view dynamic range. The
-[W] and [S] keys do the same for the maximum view dynamic range. The [Z] and [X]
-keys pin the ranges at their absolute minimum/maximum.
-
-![](https://static.wbinvd.org/img/ircam/ss3.png)
-
-The [T] key toggles the onscreen text between white, black, and off (it is never
-recorded), and the [F] key will toggle units between Celsius and Fahrenheit.
-
-![](https://static.wbinvd.org/img/ircam/ss9.png)
-
-The arrow keys move the cross, which is where the point temperature is from.
-
-![](https://static.wbinvd.org/img/ircam/ss10.png)
-
-The [M] key toggles small blue/red min/max markers, and [U] flips the screen.
-
-Recording
----------
-
-The [R] key begins raw 16-bit recording. Each recording goes to a new file named
-for the epoch at the time it begins. Pressing [R] a second time ends the current
-recording.
-
-The generated Matroska files should be compatible with anything that understands
-FFV1 video compression, but due to how compressed the useful dynamic range of
-the image becomes, they look incorrect at first glance:
-
-![](https://static.wbinvd.org/img/ircam/ss6.png)
-
-The [V] key begins RGB recording, which exports the actual view you see in the
-window at the time.
-
-The expectation is that you will use 16-bit recording to capture a scene, then
-use playback mode to adjust the dynamic range, finally enabling RGB recording to
-make a finished product. But you can record RGB directly from a live camera.
-
-The "-n" command line flag will record 16-bit video without rendering output, so
-you can use a headless machine to drive the camera. For uses where no GUI is
-required, build the "nosdl" target as described above.
-
-Playback
---------
-
-`$ ./ircam -p your-recording.mkv`
-
-All the viewing hotkeys described above work during playback, including the
-dynamic range settings. This is possible because the full 16-bit value is
-recorded for each pixel in each frame.
-
-During playback, the spacebar pauses the video. Pause timings are included in
-RGB recorded video. RGB recording will always end when the video loops. 16-bit
-recording is not supported in playback mode.
-
-Remote Viewing
---------------
-
-You can plug your IR camera into a headless system, and connect and view the
-output with all the usual features from another.
-
-On the system with the camera attached, run:
-
-`$ ./ircam -l`
-
-Then, connect to its IP address from the other system:
-
-`$ ./ircam -c 1.2.3.4`
-
-...replacing '1.2.3.4' with the appropriate address on your network.
-
-Any recorded video is stored locally as usual. It is possible to combine both
--l and -n, but the recording will not begin until a remote client connects.
-
-For uses where no GUI is required, build the "nosdl" target as described above.
-
-Converting Video
-----------------
-
-`$ ffmpeg -i 1-rgb.mkv -f mp4 -c:v h264 -crf 17 highquality.mp4`
-
-`$ ffmpeg -i 1-rgb.mkv -f mp4 -c:v h264 -preset veryfast mobile.mp4`
-
-History
--------
-
-I hacked this together to make better use of the TOPDON TC001, a (relatively)
-cheap 256x192 25hz USB infrared camera designed to be plugged into a cell phone.
-
-The exact hardware: https://www.amazon.com/dp/B0C23Z42KX
-
-My goal was to write something fast enough to render the video in real time with
-1080p upscaling on a Raspberry Pi Zero W (the older single core ARMv6 without
-hardware division).
-
-It works!
-
-![](https://static.wbinvd.org/img/ircam/pi-1.jpg)
-
-My initial implementation relied on the BCM2835 hardware floating point support,
-and pegged the CPU at 10fps on the Zero. Converting that floating point
-arithmetic to fixed point and/or lookup tables improved it to 20fps.
-
-Using [SDL_FontCache](https://github.com/grimfang4/SDL_FontCache)
-to render the text finally got it to 25fps, but it was so close to the edge that
-simply pinging the Pi from my laptop would make it drop frames!
-
-The final optimization was to refactor the scaling math: each frame requires a
-division for each pixel
-([code](https://github.com/jcalvinowens/ircam-viewer/blob/master/sdl.c#L517)),
-but the divisor is the same across the entire frame. So what were then software
-divisions became hardware multiplications at the cost of one extra software
-division (to compute the multiplicative inverse), an obviously economical
-proposition with 49152 pixels in each frame. With that final improvement, the
-formerly overloaded Pi Zero W is now 50% idle.
-
-![](https://static.wbinvd.org/img/ircam/pi-2.jpg)
-
-I additionally implemented a 256KB lookup table of all 65536 necessary 32-bit
-multiplicative inverses, but it showed no measurable advantage on the Pi in
-testing, so I removed it.
-
-## Tiny1B UVC shutter controls (local patch)
-
-This tree also has direct Tiny1B vendor-control support, without `libiruvc`.
-The commands use the camera's endpoint-0 vendor mailbox and require access to
-`/dev/bus/usb` (run as root, or install a udev rule for `0bda:3901`).
+依赖：
 
 ```sh
-# Read the current auto-shutter flag
-./ircam -d /dev/video4 --shutter-auto-get
+sudo apt install libsdl2-dev libsdl2-ttf-dev \
+    libavcodec-dev libavformat-dev libavutil-dev
+```
 
-# Auto shutter on, 60..120 second interval
-./ircam -d /dev/video4 \
+构建 GUI 版本：
+
+```sh
+make -j"$(nproc)"
+```
+
+产物：
+
+```text
+build/ircam
+```
+
+无 SDL 的 headless 版本：
+
+```sh
+make nosdl
+```
+
+产物：
+
+```text
+build/ircam-nosdl
+```
+
+ASan 调试版本：
+
+```sh
+make debug
+```
+
+产物：
+
+```text
+build/debug/ircam
+```
+
+安装到系统：
+
+```sh
+sudo make install
+```
+
+清理：
+
+```sh
+make clean
+```
+
+## Tiny1B 快门控制
+
+使用前需要允许当前用户访问摄像头的 raw USB 设备。可以临时使用 `sudo`，也可以
+添加一条 udev 规则。下面只是本机示例，正式 deb 包不会安装这条规则：
+
+```udev
+# /etc/udev/rules.d/70-tiny1b.rules
+# Tiny1B / CT256 (0bda:3901)
+SUBSYSTEM=="usb", ATTR{idVendor}=="0bda", ATTR{idProduct}=="3901", MODE="0660", GROUP="video", TAG+="uaccess"
+```
+
+使用 `70-` 前缀是为了让 `uaccess` 在 `73-seat-late.rules` 之前生效。添加后重新
+加载规则，并重新插拔摄像头：
+
+```sh
+sudo udevadm control --reload-rules
+sudo udevadm trigger --action=change --subsystem-match=usb
+```
+
+```sh
+# 读取当前自动快门状态
+./build/ircam -d /dev/video4 --shutter-auto-get
+
+# 开启自动快门，设置最小/最大间隔
+./build/ircam -d /dev/video4 \
     --shutter-auto 1 \
     --shutter-min 60 \
     --shutter-max 120
 
-# Disable auto shutter and trigger one manual calibration
-./ircam -d /dev/video4 \
+# 关闭自动快门并触发一次手动校准
+./build/ircam -d /dev/video4 \
     --shutter-auto 0 \
     --shutter-manual
 ```
 
-Options:
+选项：
 
-* `--shutter-auto 0|1` - firmware auto-shutter enable
-* `--shutter-min N` - minimum interval, 0..255
-* `--shutter-max N` - maximum interval, 0..255
-* `--shutter-vtemp-thd N` - sensor-temperature threshold, 0..255
-* `--shutter-manual` - trigger one manual shutter
-* `--shutter-auto-get` - print the current auto-shutter flag
+| 选项 | 说明 |
+|---|---|
+| `--shutter-auto 0 或 1` | 开启或关闭固件自动快门 |
+| `--shutter-min N` | 最小间隔，固件定义值，范围 0..255 |
+| `--shutter-max N` | 最大间隔，固件定义值，范围 0..255 |
+| `--shutter-vtemp-thd N` | 传感器温度阈值，范围 0..255 |
+| `--shutter-manual` | 触发一次手动快门校准 |
+| `--shutter-auto-get` | 打印当前自动快门标志 |
 
-The interval unit is the firmware's byte-valued interval parameter; 60/120 is
-a good starting point for a quieter camera. Setting `--shutter-auto 0` without
-periodic manual triggers can cause slow thermal drift.
+## 快门配置持久化
 
-### Persisting shutter settings
-
-Shutter settings can be stored in a small config file and loaded automatically
-on the next start. The default path is:
+配置文件默认位置：
 
 ```text
 $XDG_CONFIG_HOME/ircam-viewer.conf
 ```
 
-or, when `XDG_CONFIG_HOME` is unset:
+未设置 `XDG_CONFIG_HOME` 时：
 
 ```text
 $HOME/.config/ircam-viewer.conf
 ```
 
-Save the current values:
+保存当前设置：
 
 ```sh
-./ircam -d /dev/video4 \
+./build/ircam -d /dev/video4 \
     --shutter-auto 1 \
     --shutter-min 60 \
     --shutter-max 120 \
     --shutter-save
 ```
 
-Later runs can omit the shutter flags:
-
-```sh
-./ircam -d /dev/video4
-```
-
-The file is a simple `key=value` list:
+配置文件格式：
 
 ```text
 shutter_auto=1
@@ -296,8 +166,48 @@ shutter_min=60
 shutter_max=120
 ```
 
-Use `--shutter-config PATH` to override the file, `--shutter-no-config` to
-ignore it for one run, and `--shutter-save` to write the effective values.
-Command-line values take precedence over the file.
+相关选项：
 
-The interval unit is the firmware's byte-valued interval parameter; 60/120 is a good starting point. If you experiment with larger values, use a known-good USB cable and test a cold restart before relying on them.
+- `--shutter-config PATH`：使用指定配置文件。
+- `--shutter-no-config`：本次运行忽略配置文件。
+- `--shutter-save`：把当前有效设置写回配置文件。
+
+命令行参数优先于配置文件。
+
+## 显示与旋转
+
+- 默认单位为摄氏度，按 `F` 切换华氏度。
+- 按 `U` 每次旋转 90°。
+- 启动时可用 `-r 0|90|180|270` 指定初始旋转角度。
+
+## Debian 打包
+
+`debian/` 目录用于构建通用的 `ircam-viewer` 包：
+
+```sh
+sudo apt install debhelper dpkg-dev
+make package
+```
+
+`make package` 会调用 `dpkg-buildpackage`，并把 `.deb`、`.ddeb`、`.changes`、
+`.buildinfo` 以及构建日志统一放进：
+
+```text
+dist/
+```
+
+包内包含：
+
+```text
+/usr/bin/ircam
+/usr/share/applications/ircam-viewer.desktop
+/usr/share/icons/hicolor/scalable/apps/ircam-viewer.svg
+/usr/share/icons/hicolor/256x256/apps/ircam-viewer.png
+/usr/share/man/man1/ircam.1.gz
+/usr/share/doc/ircam-viewer/
+```
+
+## 许可
+
+本工程沿用上游的 GPL-3.0-or-later 许可，详见 [LICENSE](LICENSE)。上游版权归
+原作者所有；本分支的修改部分见 `debian/copyright`。
