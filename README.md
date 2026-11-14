@@ -90,8 +90,7 @@ make clean
 
 ## Tiny1B 快门控制
 
-使用前需要允许当前用户访问摄像头的 raw USB 设备。可以临时使用 `sudo`，也可以
-添加一条 udev 规则。下面只是本机示例，正式 deb 包不会安装这条规则：
+使用前需要允许当前用户访问摄像头的 raw USB 设备。可以临时使用 `sudo`，也可以添加一条 udev 规则。
 
 ```udev
 # /etc/udev/rules.d/70-tiny1b.rules
