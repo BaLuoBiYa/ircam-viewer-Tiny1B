@@ -20,6 +20,8 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <stdio.h>
+#include <limits.h>
 #include <unistd.h>
 #include <errno.h>
 #include <err.h>
@@ -306,6 +308,66 @@ bool v4l2_matches_desc(const char *path, const struct ircam_desc *desc)
 	close(dev.v4l2_fd);
 out:
 	return match;
+}
+
+static int read_sysfs_hex(const char *dir, const char *name, uint32_t *out)
+{
+	char path[PATH_MAX];
+	unsigned int value;
+	FILE *f;
+
+	if (snprintf(path, sizeof(path), "%s/%s", dir, name) >=
+	    (int)sizeof(path))
+		return -1;
+
+	f = fopen(path, "r");
+	if (!f)
+		return -1;
+
+	if (fscanf(f, "%x", &value) != 1) {
+		fclose(f);
+		return -1;
+	}
+
+	fclose(f);
+	*out = value;
+	return 0;
+}
+
+bool v4l2_matches_usb_ids(const char *path, uint32_t vid, uint32_t pid)
+{
+	char real[PATH_MAX];
+	char sys[PATH_MAX];
+	char dir[PATH_MAX];
+	const char *base;
+	char *slash;
+	uint32_t found_vid;
+	uint32_t found_pid;
+
+	if (!realpath(path, real))
+		return false;
+
+	base = strrchr(real, '/');
+	base = base ? base + 1 : real;
+
+	if (snprintf(sys, sizeof(sys), "/sys/class/video4linux/%s/device",
+		     base) >= (int)sizeof(sys))
+		return false;
+
+	if (!realpath(sys, dir))
+		return false;
+
+	for (;;) {
+		if (read_sysfs_hex(dir, "idVendor", &found_vid) == 0 &&
+		    read_sysfs_hex(dir, "idProduct", &found_pid) == 0)
+			return found_vid == vid && found_pid == pid;
+
+		slash = strrchr(dir, '/');
+		if (!slash || slash == dir)
+			return false;
+
+		*slash = '\0';
+	}
 }
 
 /**

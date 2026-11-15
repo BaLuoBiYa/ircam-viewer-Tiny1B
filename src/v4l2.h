@@ -26,6 +26,7 @@
 struct v4l2_dev;
 
 bool v4l2_matches_desc(const char *path, const struct ircam_desc *desc);
+bool v4l2_matches_usb_ids(const char *path, uint32_t vid, uint32_t pid);
 
 struct v4l2_dev *v4l2_open(const char *path, uint32_t fmt, int w, int h, int f);
 

@@ -20,6 +20,8 @@ NOSDL_BIN := $(BUILD_DIR)/ircam-nosdl
 
 PREFIX ?= /usr
 BINDIR ?= $(PREFIX)/bin
+DIST_DIR ?= dist
+VERSION := $(shell dpkg-parsechangelog -SVersion 2>/dev/null)
 
 SDL_C_SRCS = main.c dev.c v4l2.c lavc.c inet.c sdl.c fontcache.c uvc.c
 SDL_OBJS = $(addprefix $(OBJ_DIR)/,$(SDL_C_SRCS:.c=.o)) $(OBJ_DIR)/builtin.o
@@ -27,7 +29,7 @@ NOSDL_C_SRCS = main.c dev.c v4l2.c lavc.c inet.c uvc.c
 NOSDL_OBJS = $(addprefix $(NOSDL_OBJ_DIR)/,$(NOSDL_C_SRCS:.c=.o))
 NOSDL_CFLAGS = -DIRCAM_NOSDL -Wno-unused-parameter
 
-.PHONY: all nosdl debug format clean install package
+.PHONY: all nosdl debug format clean install package clean-old-packages checksums
 
 all: $(BIN) $(BUILD_DIR)/util/kfwd $(BUILD_DIR)/util/sisyphus
 nosdl: $(NOSDL_BIN)
@@ -88,5 +90,19 @@ clean:
 install: $(BIN)
 	install -Dm755 $(BIN) $(DESTDIR)$(BINDIR)/ircam
 
-package:
+clean-old-packages:
+	@test -n "$(VERSION)" || { echo "cannot determine package version" >&2; exit 1; }
+	@mkdir -p "$(DIST_DIR)"
+	@find "$(DIST_DIR)" -maxdepth 1 -type f \
+		\( -name 'ircam-viewer*.deb' -o -name 'ircam-viewer*.ddeb' \
+		   -o -name 'ircam-viewer*.changes' -o -name 'ircam-viewer*.buildinfo' \) \
+		! -name "*$(VERSION)*" -print -delete
+	@rm -f "$(DIST_DIR)/SHA256SUMS"
+
+package: clean-old-packages
 	./scripts/package-deb.sh
+
+checksums:
+	@test -n "$(VERSION)" || { echo "cannot determine package version" >&2; exit 1; }
+	@cd "$(DIST_DIR)" && sha256sum ircam-viewer_$(VERSION)_*.deb > SHA256SUMS
+	@cat "$(DIST_DIR)/SHA256SUMS"

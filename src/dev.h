@@ -31,6 +31,10 @@ struct ircam_desc {
 	int32_t v4l2_height;
 	uint32_t v4l2_fmt;
 	uint32_t ff_raw_fmt;
+	uint32_t kelvin_scale;
+	uint32_t has_tiny1b_shutter;
+	uint32_t usb_vid;
+	uint32_t usb_pid;
 	const char name[64];
 };
 
@@ -46,6 +50,10 @@ static inline void ircam_desc_ntoh(struct ircam_desc *desc)
 	NTOH(v4l2_width);
 	NTOH(v4l2_height);
 	NTOH(ff_raw_fmt);
+	NTOH(kelvin_scale);
+	NTOH(has_tiny1b_shutter);
+	NTOH(usb_vid);
+	NTOH(usb_pid);
 }
 #undef NTOH
 
@@ -61,6 +69,10 @@ static inline void ircam_desc_hton(struct ircam_desc *desc)
 	HTON(v4l2_width);
 	HTON(v4l2_height);
 	HTON(ff_raw_fmt);
+	HTON(kelvin_scale);
+	HTON(has_tiny1b_shutter);
+	HTON(usb_vid);
+	HTON(usb_pid);
 }
 #undef HTON
 

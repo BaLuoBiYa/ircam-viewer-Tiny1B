@@ -12,6 +12,7 @@
 - 增加 Tiny1B / CT256 的 UVC vendor 快门控制，不依赖 `libiruvc`。
 - 增加快门设置持久化，支持从命令行或配置文件加载。
 - 修正 Tiny1B 温度原始值的缩放（Kelvin × 16），默认显示摄氏度。
+- UVC 快门和 Kelvin × 16 缩放绑定到 Tiny1B 描述符，不影响其他机型。
 - 将输出旋转从 180° 翻转改为 90° 步进旋转。
 - 增加 Debian 打包文件，提供桌面入口、图标和 man page。
 
@@ -89,6 +90,8 @@ make clean
 ```
 
 ## Tiny1B 快门控制
+
+快门控制只对 Tiny1B / CT256（`0bda:3901`）生效。其他机型传入这些参数时会被忽略并提示，不会发送 vendor 命令。
 
 使用前需要允许当前用户访问摄像头的 raw USB 设备。可以临时使用 `sudo`，也可以添加一条 udev 规则。
 
@@ -188,12 +191,20 @@ sudo apt install debhelper dpkg-dev
 make package
 ```
 
-`make package` 会调用 `dpkg-buildpackage`，并把 `.deb`、`.ddeb`、`.changes`、
-`.buildinfo` 以及构建日志统一放进：
+`make package` 会先删除 `dist/` 中旧版本的包，再调用 `dpkg-buildpackage`，并把
+当前版本的 `.deb`、`.ddeb`、`.changes`、`.buildinfo` 以及构建日志统一放进：
 
 ```text
 dist/
 ```
+
+发布前生成当前版本 GUI 包的校验和：
+
+```sh
+make checksums
+```
+
+会写入 `dist/SHA256SUMS`，只包含当前版本的 `.deb`。
 
 包内包含：
 

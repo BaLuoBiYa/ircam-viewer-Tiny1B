@@ -137,9 +137,11 @@ static struct temp_fixp kelvin_to_celsius(struct temp_fixp t)
 	return ret;
 }
 
-static struct temp_fixp raw_to_celsius(uint16_t raw)
+static struct temp_fixp raw_to_celsius(const struct ircam_desc *desc,
+				       uint16_t raw)
 {
-	return kelvin_to_celsius(raw_to_kelvin((uint32_t)raw * 4));
+	return kelvin_to_celsius(raw_to_kelvin((uint32_t)raw *
+					       desc->kelvin_scale));
 }
 
 static struct temp_fixp celsius_to_fahrenheit(struct temp_fixp t)
@@ -366,8 +368,8 @@ static void showtexts(struct sdl_ctx *c, struct temp_fixp max,
 		 max.sign ? '-' : ' ', max.major, b10lookup[max.minor], s);
 
 	if (c->scale_max || c->scale_min) {
-		struct temp_fixp fmax = raw_to_celsius(c->scale_max);
-		struct temp_fixp fmin = raw_to_celsius(c->scale_min);
+		struct temp_fixp fmax = raw_to_celsius(c->desc, c->scale_max);
+		struct temp_fixp fmin = raw_to_celsius(c->desc, c->scale_min);
 
 		if (c->fahren) {
 			fmax = celsius_to_fahrenheit(fmax);
@@ -805,8 +807,9 @@ skippaint:
 		c->frame_paint_seq++;
 
 	if (c->showtext) {
-		showtexts(c, raw_to_celsius(orig_max), raw_to_celsius(ptemp),
-			  raw_to_celsius(orig_min), seq);
+		showtexts(c, raw_to_celsius(c->desc, orig_max),
+			  raw_to_celsius(c->desc, ptemp),
+			  raw_to_celsius(c->desc, orig_min), seq);
 
 		if (!c->showhelp)
 			paint_colored_marker(c, &c->crosshair, 2,

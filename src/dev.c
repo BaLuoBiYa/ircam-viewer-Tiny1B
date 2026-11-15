@@ -54,6 +54,7 @@ static const struct ircam_desc supported_descs[] = {
 		.v4l2_height = 384,
 		.v4l2_fmt = V4L2_PIX_FMT_YUYV,
 		.ff_raw_fmt = AV_PIX_FMT_GRAY16LE,
+		.kelvin_scale = 1,
 		.name = "TOPDON TC001 or compatible",
 	},
 	/*
@@ -74,7 +75,32 @@ static const struct ircam_desc supported_descs[] = {
 		.v4l2_height = 386, // Contains 2 additional rows metadata
 		.v4l2_fmt = V4L2_PIX_FMT_YUYV,
 		.ff_raw_fmt = AV_PIX_FMT_GRAY16LE,
+		.kelvin_scale = 1,
 		.name = "Thermal Master P2 or compatible",
+	},
+	/*
+	 * Tiny1B / CT256 (Realtek 0bda:3901)
+	 *
+	 * Same double-height YUYV layout as the TC001 family, but its vendor
+	 * shutter mailbox is Tiny1B-specific and its raw values are Kelvin * 16
+	 * instead of Kelvin * 64.
+	 */
+	{
+		.width = 256,
+		.height = 192,
+		.fps = 25,
+		.isize = 256 * 192 * 2,
+		.iskip = 256 * 192 * 2,
+		.vsize = 256 * 192 * 4,
+		.v4l2_width = 256,
+		.v4l2_height = 384,
+		.v4l2_fmt = V4L2_PIX_FMT_YUYV,
+		.ff_raw_fmt = AV_PIX_FMT_GRAY16LE,
+		.kelvin_scale = 4,
+		.has_tiny1b_shutter = 1,
+		.usb_vid = 0x0bda,
+		.usb_pid = 0x3901,
+		.name = "Tiny1B / CT256",
 	},
 };
 
@@ -104,9 +130,27 @@ const struct ircam_desc *lookup_camera_desc(const char *path)
 {
 	unsigned int i;
 
+	/* Prefer descriptors that match a specific USB vendor/product ID. */
 	for (i = 0; i < nr_camera_descs(); i++) {
-		if (v4l2_matches_desc(path, &supported_descs[i]))
-			return &supported_descs[i];
+		const struct ircam_desc *desc = &supported_descs[i];
+
+		if (!desc->usb_vid || !desc->usb_pid)
+			continue;
+
+		if (v4l2_matches_desc(path, desc) &&
+		    v4l2_matches_usb_ids(path, desc->usb_vid, desc->usb_pid))
+			return desc;
+	}
+
+	/* Fall back to format-only descriptors for compatible cameras. */
+	for (i = 0; i < nr_camera_descs(); i++) {
+		const struct ircam_desc *desc = &supported_descs[i];
+
+		if (desc->usb_vid || desc->usb_pid)
+			continue;
+
+		if (v4l2_matches_desc(path, desc))
+			return desc;
 	}
 
 	return NULL;

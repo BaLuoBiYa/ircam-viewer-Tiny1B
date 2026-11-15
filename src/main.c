@@ -164,36 +164,40 @@ found:
 
 	if (shutter_auto >= 0 || shutter_min >= 0 || shutter_max >= 0 ||
 	    shutter_vtemp_thd >= 0 || shutter_manual || shutter_get_auto) {
-		int ufd = uvc_open_for_video(devpath);
+		if (!desc->has_tiny1b_shutter) {
+			warnx("shutter controls are not supported on %s; ignoring",
+			      desc->name);
+		} else {
+			int ufd = uvc_open_for_video(devpath);
 
-		if (ufd < 0)
-			err(1, "can't open USB control for '%s'", devpath);
+			if (ufd < 0)
+				err(1, "can't open USB control for '%s'", devpath);
 
-		if (shutter_auto >= 0 &&
-		    uvc_shutter_set_auto(ufd, shutter_auto))
-			err(1, "shutter-auto failed");
-		if (shutter_min >= 0 &&
-		    uvc_shutter_set_min_interval(ufd, shutter_min))
-			err(1, "shutter-min failed");
-		if (shutter_max >= 0 &&
-		    uvc_shutter_set_max_interval(ufd, shutter_max))
-			err(1, "shutter-max failed");
-		if (shutter_vtemp_thd >= 0 &&
-		    uvc_shutter_set_vtemp_thd(ufd, shutter_vtemp_thd))
-			err(1, "shutter-vtemp-thd failed");
-		if (shutter_get_auto) {
-			int value = uvc_shutter_get_auto(ufd);
+			if (shutter_auto >= 0 &&
+			    uvc_shutter_set_auto(ufd, shutter_auto))
+				err(1, "shutter-auto failed");
+			if (shutter_min >= 0 &&
+			    uvc_shutter_set_min_interval(ufd, shutter_min))
+				err(1, "shutter-min failed");
+			if (shutter_max >= 0 &&
+			    uvc_shutter_set_max_interval(ufd, shutter_max))
+				err(1, "shutter-max failed");
+			if (shutter_vtemp_thd >= 0 &&
+			    uvc_shutter_set_vtemp_thd(ufd, shutter_vtemp_thd))
+				err(1, "shutter-vtemp-thd failed");
+			if (shutter_get_auto) {
+				int value = uvc_shutter_get_auto(ufd);
 
-			if (value < 0)
-				err(1, "shutter-auto-get failed");
-			printf("shutter auto: %d\n", value);
+				if (value < 0)
+					err(1, "shutter-auto-get failed");
+				printf("shutter auto: %d\n", value);
+			}
+			if (shutter_manual && uvc_shutter_manual(ufd))
+				err(1, "shutter-manual failed");
+
+			close(ufd);
 		}
-		if (shutter_manual && uvc_shutter_manual(ufd))
-			err(1, "shutter-manual failed");
-
-		close(ufd);
 	}
-
 
 	while (!stop) {
 		struct v4l2_buffer buf = { 0 };

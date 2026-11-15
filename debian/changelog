@@ -1,3 +1,12 @@
+ircam-viewer (1.0.1-1) unstable; urgency=medium
+
+  * Make Tiny1B UVC shutter controls model-specific.
+  * Add USB VID/PID matching so 0bda:3901 gets the Tiny1B descriptor.
+  * Apply Kelvin x16 temperature scaling only to Tiny1B; keep x64 for others.
+  * Keep 90-degree rotation and Celsius default unchanged.
+
+ -- BaLuoBiYa <Louie.LiuHaoYu@outlook.com>  Sun, 15 Nov 2026 10:15:00 +0800
+
 ircam-viewer (1.0.0-1) unstable; urgency=medium
 
   * Initial Debian packaging.
